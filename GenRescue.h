@@ -1,0 +1,55 @@
+/************************************************************/
+/*    NAME: Adam Pressel                                              */
+/*    ORGN: MIT, Cambridge MA                               */
+/*    FILE: GenRescue.h                                          */
+/*    DATE: December 29th, 1963                             */
+/************************************************************/
+
+#ifndef GenRescue_HEADER
+#define GenRescue_HEADER
+
+#include "MOOS/libMOOS/Thirdparty/AppCasting/AppCastingMOOSApp.h"
+#include "XYSegList.h"
+#include "XYPoint.h"
+#include "XYFormatUtilsPoint.h"
+#include <vector>
+
+class GenRescue : public AppCastingMOOSApp
+{
+public:
+  GenRescue();
+  ~GenRescue();
+
+protected: // Standard MOOSApp functions to overload
+  bool OnNewMail(MOOSMSG_LIST &NewMail);
+  bool Iterate();
+  bool OnConnectToServer();
+  bool OnStartUp();
+
+protected: // Standard AppCastingMOOSApp function to overload
+  bool buildReport();
+
+protected:
+  void registerVariables();
+
+private: // Configuration variables
+  std::map<std::string, XYPoint> m_map_swimmers;
+  std::set<std::string> m_set_swimmers_found;
+
+  XYSegList m_seg_list;
+
+  int m_curr_swimmer_found_list_size;
+  int m_curr_swimmer_list_size;
+
+  int m_visit_radius;
+
+  double m_nav_x;
+  double m_nav_y;
+
+  bool m_x;
+  bool m_y;
+
+private: // State variables
+};
+
+#endif

@@ -1,0 +1,9 @@
+//------------------------------------------------
+// pGenRescue config block
+
+ProcessConfig = pGenRescue
+{
+   AppTick   = 4
+   CommsTick = 4
+}
+
