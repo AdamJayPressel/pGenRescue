@@ -46,8 +46,13 @@ private: // Configuration variables
   double m_nav_x;
   double m_nav_y;
 
+  double m_adv_x;
+  double m_adv_y;
+  double m_adv_hdg;
+
   bool m_x;
   bool m_y;
+  bool m_inital_tsp;
 
 private: // State variables
 };

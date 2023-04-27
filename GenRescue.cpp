@@ -9,6 +9,8 @@
 #include "MBUtils.h"
 #include "ACTable.h"
 #include "GenRescue.h"
+#include "NodeRecord.h"
+#include "NodeRecordUtils.h"
 
 using namespace std;
 
@@ -21,6 +23,10 @@ GenRescue::GenRescue()
   m_nav_x = 0;
   m_nav_y = 0;
 
+  m_adv_x = 0;
+  m_adv_y = 0;
+  m_adv_hdg = 0;
+
   // bools of first coord reading
   m_x = false;
   m_y = false;
@@ -29,6 +35,8 @@ GenRescue::GenRescue()
 
   m_curr_swimmer_list_size = 0;
   m_curr_swimmer_found_list_size = 0;
+
+  m_inital_tsp = true;
 }
 
 //---------------------------------------------------------
@@ -74,6 +82,15 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
       // temp_swim_pt.set_vertex(temp_swim_x_pos, temp_swim_y_pos, temp_swim_id);
 
       m_map_swimmers[temp_swim_id] = temp_swim_pt;
+    }
+    else if (key == "NODE_REPORT")
+    {
+      string node_str = msg.GetString();
+      NodeRecord record = string2NodeRecord(node_str);
+
+      m_adv_x = record.getX();
+      m_adv_y = record.getY();
+      m_adv_hdg = record.getHeading();
     }
     else if (key == "NAV_X")
     {
@@ -133,67 +150,74 @@ bool GenRescue::Iterate()
     {
       string id = it->first;
       XYPoint point = it->second;
+      // get adversary position
+      // get max swimmer, min swimmer
+      vector<bool> on_side(m_map_swimmers.size(), false);
+      set<bool> on_side;
+
+      // if there are outstanding swimmmers, not found
       if (m_set_swimmers_found.count(id) == 0)
       {
-        points_to_visit_list.push_back(point);
-        // counter++;
+        if (m_inital_tsp % % on_side(it)) // && AND point is on my side
+        {
+          m_inital_tsp = false;
+
+          points_to_visit_list.push_back(point);
+        }
+        else
+        {
+          points_to_visit_list.push_back(point);
+        }
       }
     }
+  }
 
-    // // DEBUG
-    // XYSegList debug;
-    // for (int i = 0; i < points_to_visit_list.size(); i++)
-    // {
-    //   debug.add_vertex(points_to_visit_list[i]);
-    // }
-    // string debug_str = debug.get_spec() + to_string(counter);
-    // Notify("DEBUG_UPDATE", debug_str);
+  // if there is a change in the target swimmers list or
+  //             a change in the number of swimmers found by anyone
+  if (m_curr_swimmer_list_size != points_to_visit_list.size() ||
+      m_curr_swimmer_found_list_size != m_set_swimmers_found.size())
+  {
+    gen_path = true;
+    m_curr_swimmer_list_size = points_to_visit_list.size();
+    m_curr_swimmer_found_list_size = m_set_swimmers_found.size();
+  }
 
-    // if there is a change in the target swimmers list or
-    //             a change in the number of swimmers found by anyone
-    if (m_curr_swimmer_list_size != points_to_visit_list.size() ||
-        m_curr_swimmer_found_list_size != m_set_swimmers_found.size())
+  // begin TSP Problem
+  XYSegList seg_list;
+  // First Time through, focus on swimmers close inital half of field
+  // Original TSP
+  if (gen_path)
+  {
+    vector<bool> sorted(points_to_visit_list.size(), false);
+    for (int n = 0; n < points_to_visit_list.size(); n++)
     {
-      gen_path = true;
-      m_curr_swimmer_list_size = points_to_visit_list.size();
-      m_curr_swimmer_found_list_size = m_set_swimmers_found.size();
-    }
-
-    // begin TSP Problem
-    XYSegList seg_list;
-    if (gen_path)
-    {
-      vector<bool> sorted(points_to_visit_list.size(), false);
-      for (int n = 0; n < points_to_visit_list.size(); n++)
+      double shortest_distance = -1;
+      int short_index = 0;
+      // for every point in the points to visit, calculate distance to current x_y
+      for (int i = 0; i < points_to_visit_list.size(); i++)
       {
-        double shortest_distance = -1;
-        int short_index = 0;
-        // for every point in the points to visit, calculate distance to current x_y
-        for (int i = 0; i < points_to_visit_list.size(); i++)
+        double delta_x = abs(current_x - points_to_visit_list[i].x());
+        double delta_y = abs(current_y - points_to_visit_list[i].y());
+        double temp_distance = sqrt((delta_x * delta_x) + (delta_y * delta_y));
+        if (!sorted[i])
         {
-          double delta_x = abs(current_x - points_to_visit_list[i].x());
-          double delta_y = abs(current_y - points_to_visit_list[i].y());
-          double temp_distance = sqrt((delta_x * delta_x) + (delta_y * delta_y));
-          if (!sorted[i])
+          if (shortest_distance < 0 || shortest_distance > temp_distance)
           {
-            if (shortest_distance < 0 || shortest_distance > temp_distance)
-            {
-              shortest_distance = temp_distance;
-              short_index = i;
-            }
+            shortest_distance = temp_distance;
+            short_index = i;
           }
         }
-
-        seg_list.add_vertex(points_to_visit_list[short_index].x(), points_to_visit_list[short_index].y());
-
-        current_x = points_to_visit_list[short_index].x();
-        current_y = points_to_visit_list[short_index].y();
-        sorted[short_index] = true;
       }
-      string updates_str = "points = ";
-      updates_str += seg_list.get_spec();
-      Notify("SURVEY_UPDATE", updates_str);
+
+      seg_list.add_vertex(points_to_visit_list[short_index].x(), points_to_visit_list[short_index].y());
+
+      current_x = points_to_visit_list[short_index].x();
+      current_y = points_to_visit_list[short_index].y();
+      sorted[short_index] = true;
     }
+    string updates_str = "points = ";
+    updates_str += seg_list.get_spec();
+    Notify("SURVEY_UPDATE", updates_str);
   }
 
   AppCastingMOOSApp::PostReport();
@@ -258,6 +282,7 @@ void GenRescue::registerVariables()
   Register("GENPATH_REGENERATE", 0);
   Register("SWIMMER_ALERT", 0);
   Register("FOUND_SWIMMER", 0);
+  Register("NODE_REPORT", 0);
 }
 
 //------------------------------------------------------------
