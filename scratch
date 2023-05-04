@@ -11,8 +11,6 @@
 #include "GenRescue.h"
 #include "NodeRecord.h"
 #include "NodeRecordUtils.h"
-#include <math.h>
-#include "AngleUtils.cpp"
 
 using namespace std;
 
@@ -30,8 +28,7 @@ GenRescue::GenRescue()
   m_y = false;
 
   m_visit_radius = 5;
-  concede_dist = 20;
-  front_angle = 60;
+  concede_dist = 15;
 
   m_curr_swimmer_list_size = 0;
   m_curr_swimmer_found_list_size = 0;
@@ -100,7 +97,6 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
       m_set_swimmers_found.insert(temp_swim_id);
     }
     else if (key == "NODE_REPORT"){
-      // create an instance of a node report on receipt, extract and store the X,Y,Heading values
       NodeRecord other_ship = string2NodeRecord(msg.GetString());
       other_ship_x = other_ship.getX();
       other_ship_y = other_ship.getY();
@@ -150,21 +146,13 @@ bool GenRescue::Iterate()
       XYPoint point = it->second;
       if (m_set_swimmers_found.count(id) == 0)
       {
-        // calculate the distance of each point to the other ship. if within concede_dist, dont add to points to visit
           double ship_delta_x = abs(other_ship_x - point.x());
           double ship_delta_y = abs(current_y - point.y());
           double ship_temp_distance = sqrt((ship_delta_x * ship_delta_x) + (ship_delta_y * ship_delta_y));
-          // double hdg_to = atan2(ship_delta_x,ship_delta_y);
-          // double hdg_diff = abs(hdg_to - other_ship_hdg);
-          // bool in_front = (hdg_diff < 90 || hdg_diff >270);
-          bool in_front = (absRelBearing(other_ship_x, other_ship_y, other_ship_hdg, point.x(), point.y())<front_angle);
 
-
-          if ((ship_temp_distance > concede_dist && in_front)||(ship_temp_distance > 0.5*concede_dist && !in_front) ){
+          if (ship_temp_distance > concede_dist){
             points_to_visit_list.push_back(point);
             }
-          else
-          {cout << "ignoring point: " << id <<endl;}
         // counter++;
       }
     }
@@ -218,22 +206,21 @@ bool GenRescue::Iterate()
           else {
             for (int j = 0; j < points_to_visit_list.size(); j++){
               if( i!= j)
-                {
-                // calculate the second leg distance to every point that isn't self. find shorted two point leg and select that first point
-                double delta_x2 = abs(points_to_visit_list[i].x()- points_to_visit_list[j].x());
-                double delta_y2 = abs(points_to_visit_list[i].y() - points_to_visit_list[j].y());
-                double temp_distance2 = sqrt((delta_x2 * delta_x2) + (delta_y2 * delta_y2));
-                double temp_total_dist = temp_distance2 + temp_distance;
+              {
+              double delta_x2 = abs(points_to_visit_list[i].x()- points_to_visit_list[j].x());
+              double delta_y2 = abs(points_to_visit_list[i].y() - points_to_visit_list[j].y());
+              double temp_distance2 = sqrt((delta_x2 * delta_x2) + (delta_y2 * delta_y2));
+              double temp_total_dist = temp_distance2 + temp_distance;
 
-                if (!sorted[i])
+              if (!sorted[i])
+                {
+                if (shortest_distance < 0 || shortest_distance > temp_total_dist)
                   {
-                  if (shortest_distance < 0 || shortest_distance > temp_total_dist)
-                    {
-                    shortest_distance = temp_total_dist;
-                    short_index = i;
-                    }
+                  shortest_distance = temp_total_dist;
+                  short_index = i;
                   }
                 }
+              }
             }
           }
         }

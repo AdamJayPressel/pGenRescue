@@ -54,7 +54,6 @@ private: // Configuration variables
   double other_ship_hdg;
 
   double concede_dist;
-  double front_angle;
 
 private: // State variables
 };
