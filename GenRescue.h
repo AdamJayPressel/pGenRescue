@@ -49,6 +49,7 @@ private: // Configuration variables
   bool m_x;
   bool m_y;
 
+  bool other_ship_active;
   double other_ship_x;
   double other_ship_y;
   double other_ship_hdg;
