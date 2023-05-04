@@ -11,6 +11,8 @@
 #include "GenRescue.h"
 #include "NodeRecord.h"
 #include "NodeRecordUtils.h"
+#include <math.h>
+#include "AngleUtils.cpp"
 
 using namespace std;
 
@@ -23,20 +25,16 @@ GenRescue::GenRescue()
   m_nav_x = 0;
   m_nav_y = 0;
 
-  m_adv_x = 0;
-  m_adv_y = 0;
-  m_adv_hdg = 0;
-
   // bools of first coord reading
   m_x = false;
   m_y = false;
 
   m_visit_radius = 5;
+  concede_dist = 20;
+  front_angle = 60;
 
   m_curr_swimmer_list_size = 0;
   m_curr_swimmer_found_list_size = 0;
-
-  m_inital_tsp = true;
 }
 
 //---------------------------------------------------------
@@ -83,15 +81,6 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
 
       m_map_swimmers[temp_swim_id] = temp_swim_pt;
     }
-    else if (key == "NODE_REPORT")
-    {
-      string node_str = msg.GetString();
-      NodeRecord record = string2NodeRecord(node_str);
-
-      m_adv_x = record.getX();
-      m_adv_y = record.getY();
-      m_adv_hdg = record.getHeading();
-    }
     else if (key == "NAV_X")
     {
       // if (m_x == false)
@@ -109,6 +98,15 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
       string alert_str = msg.GetString();
       string temp_swim_id = tokStringParse(alert_str, "id", ',', '=');
       m_set_swimmers_found.insert(temp_swim_id);
+    }
+    else if (key == "NODE_REPORT")
+    {
+      // create an instance of a node report on receipt, extract and store the X,Y,Heading values
+      NodeRecord other_ship = string2NodeRecord(msg.GetString());
+      other_ship_x = other_ship.getX();
+      other_ship_y = other_ship.getY();
+      other_ship_hdg = other_ship.getHeading();
+      cout << "Other Ship : (" << other_ship_x << ", " << other_ship_y << ")" << endl;
     }
     else if (key != "APPCAST_REQ") // handled by AppCastingMOOSApp
       reportRunWarning("Unhandled Mail: " + key);
@@ -150,74 +148,109 @@ bool GenRescue::Iterate()
     {
       string id = it->first;
       XYPoint point = it->second;
-      // get adversary position
-      // get max swimmer, min swimmer
-      vector<bool> on_side(m_map_swimmers.size(), false);
-      set<bool> on_side;
-
-      // if there are outstanding swimmmers, not found
       if (m_set_swimmers_found.count(id) == 0)
       {
-        if (m_inital_tsp % % on_side(it)) // && AND point is on my side
-        {
-          m_inital_tsp = false;
+        // calculate the distance of each point to the other ship. if within concede_dist, dont add to points to visit
+        double ship_delta_x = abs(other_ship_x - point.x());
+        double ship_delta_y = abs(current_y - point.y());
+        double ship_temp_distance = sqrt((ship_delta_x * ship_delta_x) + (ship_delta_y * ship_delta_y));
+        // double hdg_to = atan2(ship_delta_x,ship_delta_y);
+        // double hdg_diff = abs(hdg_to - other_ship_hdg);
+        // bool in_front = (hdg_diff < 90 || hdg_diff >270);
+        bool in_front = (absRelBearing(other_ship_x, other_ship_y, other_ship_hdg, point.x(), point.y()) < front_angle);
 
+        if ((ship_temp_distance > concede_dist && in_front) || (ship_temp_distance > 0.5 * concede_dist && !in_front))
+        {
           points_to_visit_list.push_back(point);
         }
         else
         {
-          points_to_visit_list.push_back(point);
+          cout << "ignoring point: " << id << endl;
         }
+        // counter++;
       }
     }
-  }
 
-  // if there is a change in the target swimmers list or
-  //             a change in the number of swimmers found by anyone
-  if (m_curr_swimmer_list_size != points_to_visit_list.size() ||
-      m_curr_swimmer_found_list_size != m_set_swimmers_found.size())
-  {
-    gen_path = true;
-    m_curr_swimmer_list_size = points_to_visit_list.size();
-    m_curr_swimmer_found_list_size = m_set_swimmers_found.size();
-  }
+    // // DEBUG
+    // XYSegList debug;
+    // for (int i = 0; i < points_to_visit_list.size(); i++)
+    // {
+    //   debug.add_vertex(points_to_visit_list[i]);
+    // }
+    // string debug_str = debug.get_spec() + to_string(counter);
+    // Notify("DEBUG_UPDATE", debug_str);
 
-  // begin TSP Problem
-  XYSegList seg_list;
-  // First Time through, focus on swimmers close inital half of field
-  // Original TSP
-  if (gen_path)
-  {
-    vector<bool> sorted(points_to_visit_list.size(), false);
-    for (int n = 0; n < points_to_visit_list.size(); n++)
+    // if there is a change in the target swimmers list or
+    //             a change in the number of swimmers found by anyone
+    if (m_curr_swimmer_list_size != points_to_visit_list.size() ||
+        m_curr_swimmer_found_list_size != m_set_swimmers_found.size())
     {
-      double shortest_distance = -1;
-      int short_index = 0;
-      // for every point in the points to visit, calculate distance to current x_y
-      for (int i = 0; i < points_to_visit_list.size(); i++)
+      gen_path = true;
+      m_curr_swimmer_list_size = points_to_visit_list.size();
+      m_curr_swimmer_found_list_size = m_set_swimmers_found.size();
+    }
+
+    // begin TSP Problem
+    XYSegList seg_list;
+    if (gen_path)
+    {
+      vector<bool> sorted(points_to_visit_list.size(), false);
+      for (int n = 0; n < points_to_visit_list.size(); n++)
       {
-        double delta_x = abs(current_x - points_to_visit_list[i].x());
-        double delta_y = abs(current_y - points_to_visit_list[i].y());
-        double temp_distance = sqrt((delta_x * delta_x) + (delta_y * delta_y));
-        if (!sorted[i])
+        double shortest_distance = -1;
+        int short_index = 0;
+        // for every point in the points to visit, calculate distance to current x_y
+        for (int i = 0; i < points_to_visit_list.size(); i++)
         {
-          if (shortest_distance < 0 || shortest_distance > temp_distance)
+          double delta_x = abs(current_x - points_to_visit_list[i].x());
+          double delta_y = abs(current_y - points_to_visit_list[i].y());
+          double temp_distance = sqrt((delta_x * delta_x) + (delta_y * delta_y));
+          if (count(sorted.begin(), sorted.end(), false < 1))
           {
-            shortest_distance = temp_distance;
-            short_index = i;
+            if (!sorted[i])
+            {
+              if (shortest_distance < 0 || shortest_distance > temp_distance)
+              {
+                shortest_distance = temp_distance;
+                short_index = i;
+              }
+            }
+          }
+          else
+          {
+            for (int j = 0; j < points_to_visit_list.size(); j++)
+            {
+              if (i != j)
+              {
+                // calculate the second leg distance to every point that isn't self. find shorted two point leg and select that first point
+                double delta_x2 = abs(points_to_visit_list[i].x() - points_to_visit_list[j].x());
+                double delta_y2 = abs(points_to_visit_list[i].y() - points_to_visit_list[j].y());
+                double temp_distance2 = sqrt((delta_x2 * delta_x2) + (delta_y2 * delta_y2));
+                double temp_total_dist = temp_distance2 + temp_distance;
+
+                if (!sorted[i])
+                {
+                  if (shortest_distance < 0 || shortest_distance > temp_total_dist)
+                  {
+                    shortest_distance = temp_total_dist;
+                    short_index = i;
+                  }
+                }
+              }
+            }
           }
         }
+
+        seg_list.add_vertex(points_to_visit_list[short_index].x(), points_to_visit_list[short_index].y());
+
+        current_x = points_to_visit_list[short_index].x();
+        current_y = points_to_visit_list[short_index].y();
+        sorted[short_index] = true;
       }
-
-      seg_list.add_vertex(points_to_visit_list[short_index].x(), points_to_visit_list[short_index].y());
-
-      current_x = points_to_visit_list[short_index].x();
-      current_y = points_to_visit_list[short_index].y();
-      sorted[short_index] = true;
+      string updates_str = "points = ";
+      updates_str += seg_list.get_spec();
+      Notify("SURVEY_UPDATE", updates_str);
     }
-    string updates_str = "points = ";
-    updates_str += seg_list.get_spec();
-    Notify("SURVEY_UPDATE", updates_str);
   }
 
   AppCastingMOOSApp::PostReport();
