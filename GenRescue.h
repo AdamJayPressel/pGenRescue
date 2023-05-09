@@ -57,6 +57,7 @@ private: // Configuration variables
   double concede_dist;
   double front_angle;
 
+  double m_curr_time;
 private: // State variables
 };
 

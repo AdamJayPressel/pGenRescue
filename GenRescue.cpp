@@ -91,6 +91,7 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
       // if (m_x == false)
       m_nav_x = msg.GetDouble();
       m_x = true;
+
     }
     else if (key == "NAV_Y")
     {
@@ -106,16 +107,22 @@ bool GenRescue::OnNewMail(MOOSMSG_LIST &NewMail)
     }
     else if (key == "NODE_REPORT")
     {
+      
       // create an instance of a node report on receipt, extract and store the X,Y,Heading values
       NodeRecord other_ship = string2NodeRecord(msg.GetString());
-      string other_ship_type = other_ship.getType();
+      string other_ship_type = tolower(other_ship.getType());
+    
+
       if (other_ship_type == "kayak") // bad guy only
       {
         other_ship_x = other_ship.getX();
         other_ship_y = other_ship.getY();
         other_ship_hdg = other_ship.getHeading();
         other_ship_active = true;
+
       }
+
+    
     }
     else if (key != "APPCAST_REQ") // handled by AppCastingMOOSApp
       reportRunWarning("Unhandled Mail: " + key);
@@ -142,6 +149,7 @@ bool GenRescue::Iterate()
 {
   AppCastingMOOSApp::Iterate();
 
+  double now = MOOSTime();
   vector<XYPoint> points_to_visit_list;
   bool gen_path = false;
 
@@ -178,10 +186,19 @@ bool GenRescue::Iterate()
       }
     }
 
-    if (points_to_visit_list.size() == 0)
-      Notify("SWIMMER_LIST_UPDATE", "EMPTY");
-    else
-      Notify("SWIMMER_LIST_UPDATE", "NOT_EMPTY");
+    if (points_to_visit_list.size() == 0){
+      // Notify("SWIMMER_LIST_UPDATE", "EMPTY");
+      string os_point = "points = pts= {";
+      os_point += to_string(int(other_ship_x))  +  "," +to_string(int(other_ship_y)) + "}";
+
+      Notify("SURVEY_UPDATE", os_point);
+      }
+    // else
+      // Notify("SWIMMER_LIST_UPDATE", "NOT_EMPTY");
+
+  double time_interval = 5;
+  if (abs(m_curr_time-now)>time_interval){
+    m_curr_time = now;
 
     // if there is a change in the target swimmers list or
     //             a change in the number of swimmers found by anyone
@@ -193,7 +210,7 @@ bool GenRescue::Iterate()
       m_curr_swimmer_list_size = points_to_visit_list.size();
       m_curr_swimmer_found_list_size = m_set_swimmers_found.size();
     }
-
+    }
     // begin TSP Problem
     XYSegList seg_list;
     if (gen_path)
